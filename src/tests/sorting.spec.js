@@ -1,62 +1,47 @@
 import { expect } from '@playwright/test';
 import { test } from '../fixtures/base';
+import { getSortFunction } from '../../utils/get_sorted_function';
+import { users } from '../test_data/users';
 
-const getItemsData = async (items) => {
-    const data = [];
-
-    for (const item of items) {
-        data.push({
-            name: await item.locator('.inventory_item_name').textContent(),
-            desc: await item.locator('.inventory_item_desc').textContent(),
-            price: parseFloat((await item.locator('.inventory_item_price').textContent()).replace('$', ''))
-        })
-    };
-    return data;
-}
-
-const getSortFunction = (value) => {
-    switch(value) {
-        case 'az':
-            return (item1, item2) => item1.name.localeCompare(item2.name);
-        case 'za':
-            return (item1, item2) => item2.name.localeCompare(item1.name);
-        case 'lohi':
-            return (item1, item2) => item1.price - item2.price;
-        case 'hilo':
-            return (item1, item2) => item2.price - item1.price;
-        default:
-            throw new Error(`Unknown sort value: ${value}`);
-    }
-}
+const { username, password } = users.standardUser;
 
 test.describe('Check sorting', () => {
-    test('', async (
+    test('Check sorting on InventoryPage', async (
         /** @type {{ app: import('../pages/Application').Application }} */{ app },
     ) => {
-        await app.login.navigate();
-        await app.login.performLogin('standard_user', 'secret_sauce');
+        // 'Open main page'
+        await test.step('Open main page', async () => {
+            await app.login.navigate();
+        });
+
+        // 'Login as a standard user'
+        await test.step('Login as a standard user', async () => {
+            await app.login.performLogin(username, password);
+        });
     
-        const inventoryItems = await app.inventory.inventoryItems.all();
-        const initialData = await getItemsData(inventoryItems);
-
-        const dropdown = app.page.locator('.product_sort_container');
+        // 'Get initial data for sorting'
+        const initialData = await test.step('Get initial data for sorting', async () => {
+            return await app.inventory.getItemsData();
+        });
        
-        //sort options
-        const optionElements = (await dropdown.locator('option').all())
+        // 'Get all sort option values'
+        const optionValues = await test.step('Get all sort option values', async () => {
+            return await app.inventory.getOptionValues()
+        });
 
-        for (let option of optionElements) {
-            const value = await option.getAttribute('value')
-            const sortedFunction = getSortFunction(value);
+        // 'Compare actual and expected data'
+        await test.step('Compare actual and expected data', async () => {
+            for (let value of optionValues) {
+                //select option
+                await app.inventory.dropdown.selectOption(value);
+                const actualResult = await app.inventory.getItemsData();
+                
+                //sort initialData
+                const expectedResult = [...initialData].sort(getSortFunction(value));
 
-            //select option
-            await dropdown.selectOption(value);
-            const currentData = await getItemsData(inventoryItems);
-            
-            //sort copy of initialData
-            const sortedData = [...initialData].map(d => d).sort(sortedFunction);
-
-            //compare 
-            expect(currentData).toStrictEqual(sortedData);
-        }
+                //compare 
+                expect(actualResult).toStrictEqual(expectedResult);
+            }
+        })
     })
 });
